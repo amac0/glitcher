@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Link your Twitter Account{% endblock %}
+{% block containercontent %}
+<h2>Link your Twitter Account</h2>
+<p>Thank you, <strong>{{ form.spotify_email.data }}</strong>, for authorizing Attention Feed DJ an access token. We've successfully recieved it. All we need now is your Twitter handle to associate it with your Spotify credentials so that we can make a playlist when you ask us to on Twitter. Please fill that in below (without the @)</p>
+
+<form action="/signup" method="post">
+        {{ form.twitter_username(size=20) }}
+        {{ form.spotify_email }}
+          {{ form.csrf_token }}
+        {{ form.submit() }}
+        {% for error in form.twitter_username.errors %}
+          <br /><span style="color: red;">[{{ error }}]</span>
+        {% endfor %}
+  
+</form>
+
+{% endblock %}

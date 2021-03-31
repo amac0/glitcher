@@ -1,0 +1,14 @@
+tweepy
+flask_wtf
+flask_session
+tinydb
+spotipy
+requests
+gunicorn
+httplib2
+itsdangerous
+oauth2
+Flask
+Jinja2
+MarkupSafe
+Werkzeug

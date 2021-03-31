@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block containercontent %}
+<div class="hero-unit">
+	<p>To get started, we'll need you to authorize AttnDJ to access your Spotify account.</p>
+</div>
+<p>Ready to give this a shot?</p>
+<a href="{{ authorize_url }}" class="btn btn-small btn-success">Go to Spotify to Authorize AttnDJ</a>
+{% endblock %}

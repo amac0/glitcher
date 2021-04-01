@@ -43,7 +43,6 @@ def song_lookup():
       return("Error: couldn't find tweet")
   else: 
     return("invalid request")
-  
 
 
 #from check

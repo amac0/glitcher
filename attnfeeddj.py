@@ -27,7 +27,6 @@ app = Flask(__name__)
 
 app.debug = False
 user_db = TinyDB('.data/user_db.json')
-playlist_replies_db = TinyDB('.data/playlist_replies_db.json')
 playlist_searches_db = TinyDB('.data/playlist_searches_db.json')
 twitter_db =  TinyDB('.data/twitter_api_db.json')
 
@@ -135,7 +134,7 @@ def sign_out():
     return redirect('/')
 
 #todo secure this so it is just from 127.0.0.1
-#this checks for new @attnfeeddj mentions and generates playlists and entries in the playlist_replies_db if it finds any from users who are registered
+#this checks for new @attnfeeddj mentions and generates playlists and entries in the playlist_searches_db if it finds any from users who are registered
 @app.route('/check')
 def check():
   logging.debug("Check mentions to add playlists started")
@@ -254,7 +253,7 @@ def process_timelines():
     temp=temp+'<br />'     
   #return(temp)
   return('OK')
-
+  
 @app.errorhandler(500)
 def internal_server_error(e):
     return render_template('error.html', error_message='uncaught exception'), 500

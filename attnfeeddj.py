@@ -32,6 +32,7 @@ playlist_searches_db = TinyDB('.data/playlist_searches_db.json')
 twitter_db =  TinyDB('.data/twitter_api_db.json')
 
 COVERS_PATH='.data/cover_images'
+TESTING_USER='TestingIgnoreM1'
 
 # Support keys from environment vars (Heroku / Glitch).
 app.config['APP_CONSUMER_KEY'] = os.getenv(
@@ -146,9 +147,9 @@ def check():
   tweets_to_process=misc_util.check_mentions(twitter_db, twitter_api)
   result={'error':False, 'tweets_processed':[]}
   if not tweets_to_process: 
-    logging.debug("Check Mentions: No new tweets to process for new playlists")
-    #return(str({'error':False, 'info':"No new tweets to process for new"}))
-    return('OK')
+    logging.info("Check Mentions: No new tweets to process for new playlists")
+    return(str({'error':False, 'info':"No new tweets to process for new"}))
+    #return('OK')
   else:
     #for each tweet that is to be processed
     for tweet in tweets_to_process:
@@ -165,76 +166,28 @@ def check():
         sp=misc_util.get_spotify_for_user(user=tweet.user.screen_name, logging=logging, client_id=app.config['APP_CONSUMER_KEY'], client_secret=app.config['APP_CONSUMER_SECRET'], redirect_uri=url_for('signup', _external=True), scope=SCOPE)
         user_id = sp.me()['id']
         #figure out what type of playlist to create
-        #todo don't insert if I already have that playlist in both
-        if misc_util.is_request_for_reply_playlist(tweet):
-          playlist=misc_util.make_spotify_playlist_with_image(sp, user_id, 'AttnFeedDJ: '+misc_util.sanitize_tweet_text(tweet.text), misc_util.get_cover_image(COVERS_PATH), logging)
-          playlist_replies_db.insert({'twitter_username':tweet.user.screen_name, 'original_tweet_id':tweet.id, 'playlist_id':playlist['id']})
-          twitter_api.update_status('@'+tweet.user.screen_name+' You are all set up at '+playlist['external_urls']['spotify']+' I\'ll watch the replies and add the songs I find', tweet.id)
-          result['tweets_processed'].append(tweet)  
-        elif misc_util.is_request_for_search_playlist(tweet):
-          logging.debug("CHECK FOUND REQUEST FOR SEARCH: "+str(tweet))
-          #terms=misc_util.find_search_terms(tweet.text)
-          logging.debug("In search request")
-          #get the terms (note the second one will be the one we are monitoring)
-          terms=misc_util.get_search_terms(tweet)
-          playlist=misc_util.make_spotify_playlist_with_image(sp, user_id, 'AttnFeedDJ: #'+str(terms[1]), misc_util.get_cover_image(COVERS_PATH), logging)
-          #playlist=sp.user_playlist_create(user_id, 'AttnFeedDJ: #'+str(terms[1]))
-          playlist_searches_db.insert({'twitter_username':tweet.user.screen_name, 'original_tweet_id':tweet.id, 'playlist_id':playlist['id'], 'search_terms':terms[1]})
-          twitter_api.update_status('@'+tweet.user.screen_name+' You are all set up at '+playlist['external_urls']['spotify']+' I\'ll watch the hashtag #'+str(terms[1])+' and add songs for tweets I find that also have one of the hashtags #AttnFeedDJ, #playlist or #DJ', tweet.id)
-          result['tweets_processed'].append(tweet)
+        #todo don't insert if I already have that playlist
+        new_search = misc_util.get_hashtag(tweet)
+        if new_search:
+          #check to make sure we don't already have a playlist
+          if playlist_searches_db.search(Query().search_terms == new_search):
+            logging.info('ALREADY TRACKING PLAYLIST FOR: '+str(new_search))
+          else:
+            logging.debug("CHECK FOUND REQUEST FOR SEARCH: "+str(tweet))
+            logging.debug("In search request")
+            #create the playlist
+            playlist=misc_util.make_spotify_playlist_with_image(sp, user_id, 'AttnFeedDJ: #'+str(new_search), misc_util.get_cover_image(COVERS_PATH), logging)
+            #add it to the playlist_searches_db
+            playlist_searches_db.insert({'twitter_username':tweet.user.screen_name, 'original_tweet_id':tweet.id, 'playlist_id':playlist['id'], 'search_terms':str(new_search)})
+            #tweet the message to the user
+            twitter_api.update_status('@'+tweet.user.screen_name+' You are all set up at '+playlist['external_urls']['spotify']+' I\'ll watch the hashtag #'+str(new_search)+' and add songs for tweets I find that also have one of the hashtags #AttnFeedDJ, #playlist or #DJ', tweet.id)
+            result['tweets_processed'].append(tweet)
         else:
           logging.warn('ERROR: unknown playlist type:' + tweet.text)
-        #create the playlist
-        
     #todo later, distinguish between looking at replies, being tagged into a tweetstream, and hashtags
     #if we don't find the user, respond with an error
-  #return(str(result))
-  return('OK')
-
-#this function looks through all the registered playlists and sees if there are songs to add
-@app.route('/process_replies')
-def process_replies():
-  logging.debug("Check for new replies to add as tracks started")
-  #get a twitter api setup
-  auth = tweepy.OAuthHandler(app.config['TWITTER_APP_KEY'], app.config['TWITTER_APP_SECRET'])
-  auth.set_access_token(app.config['TWITTER_OAUTH_TOKEN'], app.config['TWITTER_OAUTH_SECRET'])
-  twitter_api = tweepy.API(auth)
-  #go through the playlist_replies_db looking for tweets to check by user
-  temp='<PRE>'
-  #users is an array of twitter usernames
-  users=misc_util.users_in_playlist_replies_db(playlist_replies_db)
-  for user in users:
-    #user_playlists is an array of the original tweet ids that are associated with a specific user for a specific playlist
-    user_playlists = misc_util.playlist_replies_for_user(playlist_replies_db, user)
-    logging.debug('PROCESS REPLIES: in user '+user+' playlist_ids are '+str(user_playlists))
-    #we get an array of tweets that are mentions of the user that are replies to that set of tweets
-    tweets_to_process= misc_util.check_replies(twitter_db, twitter_api, user, user_playlists, logging)
-    if not tweets_to_process:
-      logging.debug('PROCESS_REPLIES: No new tweets for user '+user+' playlist_ids are '+str(user_playlists))
-      temp=temp+"No new tweets for "+user
-    else:
-      #playlist_ids is a hash for looking up (by tweet_id) playlists
-      playlist_ids=misc_util.playlist_replies_lookup_by_tweet_id(playlist_replies_db,user_playlists)
-      #go through each tweet to see if we can find a song
-      for tweet in tweets_to_process:
-        #first try to find urls to specific tracks
-        #grab an sp for the user
-        sp=misc_util.get_spotify_for_user(user=user, logging=logging, client_id=app.config['APP_CONSUMER_KEY'], client_secret=app.config['APP_CONSUMER_SECRET'], redirect_uri=url_for('signup', _external=True), scope=SCOPE)
-        if sp:
-          #find a song in the tweet
-          track=misc_util.find_song(tweet, sp, logging, twitter_api)
-          if track:
-            #if found a song, add it to the right playlist
-            temp=temp+misc_util.add_track_to_playlist(track, sp, playlist_ids[str(tweet.in_reply_to_status_id)], logging)+'<br /'
-          else:
-            temp=temp+"Couldn't find a song for "+tweet.text+'<br />'  
-        else:
-          temp=temp+"Couldn't get a token for user"+user+'<br />'
-    temp=temp+'<br />'
-    #todo later, distinguish between looking at replies, being tagged into a tweetstream, and hashtags
-    #if we don't find the user, respond with an error
-  #return(temp)
-  return('OK')
+  return(str(result))
+  #return('OK')
 
 #this function looks through all the registered playlists and sees if there are songs to add
 @app.route('/process_searches')
@@ -251,26 +204,30 @@ def process_searches():
     #format the appropriate search
     for search in searches:
       tweets_to_process = misc_util.check_hashtag(twitter_db, twitter_api, search['search_terms'], search['original_tweet_id'], logging)
+      #grab an sp for the user if there are tweets to process
+      if tweets_to_process:
+        sp=misc_util.get_spotify_for_user(user=search['twitter_username'], logging=logging, client_id=app.config['APP_CONSUMER_KEY'], client_secret=app.config['APP_CONSUMER_SECRET'], redirect_uri=url_for('signup', _external=True), scope=SCOPE)  
       for tweet in tweets_to_process:
-        #grab an sp for the user
-        sp=misc_util.get_spotify_for_user(user=search['twitter_username'], logging=logging, client_id=app.config['APP_CONSUMER_KEY'], client_secret=app.config['APP_CONSUMER_SECRET'], redirect_uri=url_for('signup', _external=True), scope=SCOPE)
         if sp:
-          #find a song in the tweet
-          track=misc_util.find_song(tweet, sp, logging, twitter_api)
-          if track:
-            #if found a song, add it to the right playlist
-            temp=temp+misc_util.add_track_to_playlist(track, sp, search['playlist_id'], logging)+'<br /'
+          #don't try to find songs in explanations from the user
+          if not (search['twitter_username'].lower() == tweet.user.screen_name.lower() and misc_util.is_search_explanation(tweet)):
+            #find a song in the tweet
+            track=misc_util.find_song(tweet, sp, logging, twitter_api)
+            if track:
+              #if found a song, add it to the right playlist
+              temp=temp+misc_util.add_track_to_playlist(track, sp, search['playlist_id'], logging)+'<br /'
+            else:
+              temp=temp+"Couldn't find a song for "+tweet.text+'<br />'
           else:
-            temp=temp+"Couldn't find a song for "+tweet.text+'<br />'  
+            temp=temp+"Tweet is an explanation tweet "+tweet.text+'<br />'
         else:
           temp=temp+"Couldn't get a token for user"+user+'<br />'
     temp=temp+'<br />'     
   else:
    return("No searches to perform")
-  #return(temp)
-  return('OK')
+  return(temp)
+  #return('OK')
 
-#this function looks through all the registered playlists and sees if there are songs to add
 #this function doesn't work as it will only get the timeline for attnfeeddj
 @app.route('/process_timelines')
 def process_timelines():

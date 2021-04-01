@@ -1,6 +1,7 @@
 import tweepy
 import spotipy
 import urllib
+import requests
 from tinydb import TinyDB, Query
 import re
 import os
@@ -86,49 +87,55 @@ def get_users_for_timelines(user_db):
 def sanitize_tweet_text(tweet_text):
   #get rid of usernames & hashtags
   result = re.sub(r'[\@\#][a-zA-Z_0-9]+', ' ',   tweet_text)  
+  result = re.sub(r'\/cc', ' ',   result)  
   #get rid of links
   #get rid of extra spaces
-  result = re.sub(r'  ', ' ',   result)  
+  result = re.sub(r' +', ' ',   result)  
   result = re.sub(r'^\s+', '',   result)  
   result = re.sub(r'\s+$', '',   result)  
   #todo deal with '-' at beginning of words and other search modifiers (and etc.)
   return(result)
 
-#for a tweet, see if there are exactly 2 hashtags search terms 
-#and that at least one of them is in our SEARCH_KEYWORDS list
-#return that one first and the other hashtag second
-def get_search_terms(tweet):
-  (hashtag1, hashtag2)=(False, False)
-  if tweet.entities is not None and 'hashtags' in tweet.entities and len(tweet.entities['hashtags']) == 2:
+def sanitize_title(title_text):
+  #specially process YouTube titles which have the form Artist - Song - YouTube
+  if re.search(r'YouTube', title_text):
+    (artist, song, yt) = title_text.split(' - ')
+    title_text=song+' '+artist
+  result = re.sub(r'YouTube', ' ',   title_text)
+  result = re.sub(r'\-', ' ',   result)
+  result=sanitize_tweet_text(result)
+  #todo deal with '-' at beginning of words and other search modifiers (and etc.)
+  return(result)
+
+#check to see if this is someone explaining how to tweet a song
+#we are checking to see if ALL the search keywords are in the tweet
+def is_search_explanation(tweet):
+  if tweet.entities is not None and 'hashtags' in tweet.entities:
+    terms={}
+    for item in SEARCH_KEYWORDS:
+      terms[str(item).lower()]=False
     for hashtag in tweet.entities['hashtags']:
-      if hashtag['text'].lower() in SEARCH_KEYWORDS:
-        hashtag1=hashtag['text']
-      else:
-        hashtag2=hashtag['text']
-    if hashtag1 and hashtag2:
-      return ([hashtag1, hashtag2])
-    else:
-      return([])
+      if (hashtag['text'].lower() in SEARCH_KEYWORDS):
+        terms[hashtag['text'].lower()]=True
+    for item in SEARCH_KEYWORDS:
+      if not terms[str(item).lower()]:
+        return(False)
+    return(True)
   else:
-    return([])
+    return(False)
 
-#return one of three request types: REPLY SEARCH TIMELINE
-#todo TIMELINE
-def request_type(tweet):
-  #if it contains at least two hashtags and one of them is a one of the ones in out SEARCH KEYWORDS list
-  if len(get_search_terms(tweet)) == 2:
-    return("SEARCH")
-  return("REPLY")
-  
-def is_request_for_reply_playlist(tweet):
-  if request_type(tweet) =='REPLY': 
-    return(True)
-  return(False)
-
-def is_request_for_search_playlist(tweet):
-  if request_type(tweet) =='SEARCH': 
-    return(True)
-  return(False)
+#for a tweet, see if there is exactly 1 hashtag that is not in the SEARCH_KEYWORDS list
+#if so, we have a request for a search playlist. Return that term.
+def get_hashtag(tweet):
+  terms=[]
+  if tweet.entities is not None and 'hashtags' in tweet.entities:
+    for hashtag in tweet.entities['hashtags']:
+      if not (hashtag['text'].lower() in SEARCH_KEYWORDS):
+        terms.append(hashtag['text'])
+  if len(terms)==1:
+    return(terms[0])
+  else:
+    return(False)
 
 #return the sp and log any errors
 def get_spotify_for_user(user, client_id, client_secret, redirect_uri, scope, logging):
@@ -140,6 +147,12 @@ def get_spotify_for_user(user, client_id, client_secret, redirect_uri, scope, lo
   except spotipy.exceptions.SpotifyException as err:
     logging.warn('Could not get Spotify Token for user: '+user+ ' ' + str(err))
   return(sp)
+
+#given two strings return the number of words they share
+def similarity_score(s1, s2):
+  s1 = s1.lower().split(' ')
+  s2 = s2.lower().split(' ')
+  return len(list(set(s1)&set(s2)))
   
 #given a track_id and a playlist_id add the track to the playlist
 #return any messages
@@ -155,6 +168,48 @@ def add_track_to_playlist(track, sp, playlist_id, logging):
     logging.warn("Spotify Error adding track "+track['id']+' to playlist '+str(playlist_id)+str(err))
     temp=temp+"Spotify Error adding track "+track['uri']+' to playlist '+str(playlist_id)+str(err)+'<br />'
   return(temp)
+
+def search_spotify(sp, logging, terms):
+  result_track=False
+  try:
+    result = sp.search(terms, type='track', limit=10)
+  except spotipy.exceptions.SpotifyException as err:
+    logging.warn("Spotify Error searching "+terms+' '+str(err))
+  if result and 'tracks' in result and 'items' in result['tracks'] and len(result['tracks']['items'])>0:
+    song_best=-1
+    album_best=-1
+    artist_best=-1
+    most_popular=-1
+    for track in result['tracks']['items']:
+      song_score=similarity_score(track['name'],terms)
+      album_score=similarity_score(track['album']['name'],terms)
+      artist_string=''
+      for artist in track['artists']:
+        artist_string = ' '.join([artist_string, artist['name']])
+      artist_score=similarity_score(artist_string,terms)
+      if song_score>song_best:
+        song_best=song_score
+        artist_best=artist_score
+        most_popular=track['popularity']
+        result_track=track
+      elif song_score==song_best and album_score>album_best:
+        album_best=album_score
+        artist_best=artist_score
+        most_popular=track['popularity']
+        result_track=track
+      elif song_score==song_best and album_score==album_best and artist_score>artist_best:
+        artist_best=artist_score
+        most_popular=track['popularity']
+        result_track=track
+      elif song_score==song_best and album_score==album_best and artist_score==artist_best and track['popularity']>most_popular:
+        #compare popularity
+        most_popular=most_popular=track['popularity']
+        result_track=track
+      logging.debug('Found Track: '+str(song_score)+'.'+str(album_score)+'.'+str(artist_score)+'.'+str(track['popularity'])+' '+track['name']+' - '+track['album']['name']+' - '+artist_string)
+    logging.debug('Chose Track:'+result_track['name'])
+  else:
+    logging.warn('Did not find a song for terms: '+terms)
+  return(result_track)
 
 #should return a track or False
 def find_song(tweet, sp, logging, twitter_api, check_links=True, check_text=True, tweet_for_rickroll=True):
@@ -176,20 +231,28 @@ def find_song(tweet, sp, logging, twitter_api, check_links=True, check_text=True
                   found_url=True
                 except spotipy.exceptions.SpotifyException as err:
                   logging.warn('Could not find track from: URL '+url['expanded_url'])
+              else:
+                #we don't have a spotify link, grab the title of the page and see whether that can be looked up
+                page = requests.get(url['expanded_url'])
+                if page and hasattr(page,'text'):
+                  title = re.search(r'(?<=<title>)(.+?)(?=</title>)', page.text, (re.DOTALL | re.IGNORECASE))
+                  if title and title.group(1):
+                    terms = str(sanitize_title(str(title.group(1))))
+                    track = search_spotify(sp, logging, terms)
+                    if track:
+                      logging.info('Found: '+str(track['name'])+' from url '+url['expanded_url']+' with terms'+terms)
+                      found_url=True
+                    else:
+                        logging.warn('Did not find a song for URL: '+url['expanded_url'])
   #if I haven't found a url that was added, try searching on a sanitized version of the tweet text
   if check_text and not found_url:
           terms=sanitize_tweet_text(tweet.text)
           #do a search
-          try:
-            result = sp.search(terms, type='track', limit=1)
-            if result and 'tracks' in result and 'items' in result['tracks'] and len(result['tracks']['items'])>0 and 'id' in result['tracks']['items'][0]: 
-              track=result['tracks']['items'][0]
-              logging.debug('Found: '+str(track['name'])+' from text '+tweet.text)
-            else:
-              logging.warn('Did not find a song for: '+tweet.text)
-          except spotipy.exceptions.SpotifyException as err:
-            logging.warn("Spotify Error searching "+terms+' '+str(err))
-          #grab the first result if there is one and add it to the playlist
+          track = search_spotify(sp, logging, terms)
+          if track:
+            logging.debug('Found: '+str(track['name'])+' from text '+tweet.text)
+          else:
+            logging.warn('Did not find a song for: '+tweet.text)
   #don't get rickrolled
   if track and track['name'].lower() == "never gonna give you up":
     logging.info("Someone tried Never Gonna Give You Up: "+str(track))

@@ -148,8 +148,8 @@ def check():
   result={'error':False, 'tweets_processed':[]}
   if not tweets_to_process: 
     logging.info("Check Mentions: No new tweets to process for new playlists")
-    return(str({'error':False, 'info':"No new tweets to process for new"}))
-    #return('OK')
+    #return(str({'error':False, 'info':"No new tweets to process for new"}))
+    return('OK')
   else:
     #for each tweet that is to be processed
     for tweet in tweets_to_process:
@@ -186,8 +186,8 @@ def check():
           logging.warn('ERROR: unknown playlist type:' + tweet.text)
     #todo later, distinguish between looking at replies, being tagged into a tweetstream, and hashtags
     #if we don't find the user, respond with an error
-  return(str(result))
-  #return('OK')
+  #return(str(result))
+  return('OK')
 
 #this function looks through all the registered playlists and sees if there are songs to add
 @app.route('/process_searches')
@@ -225,8 +225,8 @@ def process_searches():
     temp=temp+'<br />'     
   else:
    return("No searches to perform")
-  return(temp)
-  #return('OK')
+  #return(temp)
+  return('OK')
 
 #this function doesn't work as it will only get the timeline for attnfeeddj
 @app.route('/process_timelines')

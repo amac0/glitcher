@@ -90,6 +90,7 @@ def sanitize_tweet_text(tweet_text):
   result = re.sub(r'\/cc', ' ',   result)  
   #get rid of links
   #get rid of extra spaces
+  result = re.sub(r' \&amp;', ' and ',   result)  
   result = re.sub(r' +', ' ',   result)  
   result = re.sub(r'^\s+', '',   result)  
   result = re.sub(r'\s+$', '',   result)  
@@ -102,6 +103,7 @@ def sanitize_title(title_text):
     (artist, song, yt) = title_text.split(' - ')
     title_text=song+' '+artist
   result = re.sub(r'YouTube', ' ',   title_text)
+  result = re.sub(r'on\sApple\sMusic', ' ',   result)
   result = re.sub(r'\-', ' ',   result)
   result=sanitize_tweet_text(result)
   #todo deal with '-' at beginning of words and other search modifiers (and etc.)
@@ -173,6 +175,10 @@ def search_spotify(sp, logging, terms):
   result_track=False
   try:
     result = sp.search(terms, type='track', limit=10)
+    #if no results, try again without the "by"
+    if not result and re.search(r' by ', terms, re.IGNORECASE):
+      result = sp.search(re.sub(r' by ', ' ',   terms, re.IGNORECASE), type='track', limit=10)
+      logging.warn("Tried removing the by in "+terms)
   except spotipy.exceptions.SpotifyException as err:
     logging.warn("Spotify Error searching "+terms+' '+str(err))
   if result and 'tracks' in result and 'items' in result['tracks'] and len(result['tracks']['items'])>0:

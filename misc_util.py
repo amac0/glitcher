@@ -99,6 +99,7 @@ def sanitize_tweet_text(tweet_text):
 
 def sanitize_title(title_text):
   #specially process YouTube titles which have the form Artist - Song - YouTube
+  #can also be artist song - YouTube todo figure out which is which
   if re.search(r'YouTube', title_text):
     (artist, song, yt) = title_text.split(' - ')
     title_text=song+' '+artist

@@ -21,7 +21,7 @@ fi
 $VIRTUALENV/bin/pip install -r requirements.txt
 
 # do the checks
-#sh do_checks.sh &
+sh do_checks.sh &
 
 # Run a glorious Python 3 server
 $VIRTUALENV/bin/gunicorn attnfeeddj:app --access-logfile '-' --log-level 'debug' 

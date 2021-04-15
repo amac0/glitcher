@@ -104,7 +104,7 @@ def start():
 
     # Step 4. Signed in with Spotify, get the twitter username
     #begin setting up the twitter credentials -- this happens on hitting the web page for the first time, which todo I should change
-    auth = tweepy.OAuthHandler(app.config['TWITTER_APP_KEY'], app.config['TWITTER_APP_SECRET'])
+    auth = tweepy.OAuthHandler(app.config['TWITTER_APP_KEY'], app.config['TWITTER_APP_SECRET'], url_for('start', _external=True))
     
     #if we are in the second step of the twitter authorization flow then get an access token
     #and write it all into the database
@@ -116,7 +116,7 @@ def start():
           auth.get_access_token(request.args.get("oauth_verifier"))
         except tweepy.TweepError:
           return ('Error! Failed to get access token.')
-        auth2 = tweepy.OAuthHandler(app.config['TWITTER_APP_KEY'], app.config['TWITTER_APP_SECRET'])
+        auth2 = tweepy.OAuthHandler(app.config['TWITTER_APP_KEY'], app.config['TWITTER_APP_SECRET'], url_for('start', _external=True))
         auth2.set_access_token(auth.access_token,auth.access_token_secret)
         twitter_api = tweepy.API(auth2)
         try:
@@ -157,8 +157,8 @@ def start():
       redirect_url = auth.get_authorization_url()
       session['twitter_oauth']= auth.request_token['oauth_token']
       return redirect(redirect_url)
-    except tweepy.TweepError:
-      return ('Error! Failed to get request token.')
+    except tweepy.TweepError as err:
+      return ('Error! Failed to get request token.'+str(err))
     return 'You should not be here'
 
 #this just removes the session id stuff

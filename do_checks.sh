@@ -27,6 +27,6 @@ while [ true ]
     /usr/bin/wget --quiet --output-document .data/last_check.txt https://intelligent-insidious-concavenator.glitch.me/check
     /usr/bin/wget --quiet --output-document .data/last_timeslines.txt https://intelligent-insidious-concavenator.glitch.me/process_timelines
     /usr/bin/wget --quiet --output-document .data/last_searches.txt https://intelligent-insidious-concavenator.glitch.me/process_searches
-    sleep 60
+    sleep 90
   done
 #    /usr/bin/wget --quiet --output-document .data/last_replies.txt https://intelligent-insidious-concavenator.glitch.me/process_replies

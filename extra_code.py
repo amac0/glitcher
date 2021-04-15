@@ -1,3 +1,31 @@
+#this function is only for development. Returns a song lookup for a tweetid
+@app.route('/song')
+def song_lookup():
+  # and type(request.args.get('id')) == int
+  if request.args.get('id'):
+    try:
+      id = int(request.args.get('id'))
+    except:
+      return("Error")
+    #lookup the tweetid
+    auth = tweepy.OAuthHandler(app.config['TWITTER_APP_KEY'], app.config['TWITTER_APP_SECRET'])
+    auth.set_access_token(app.config['TWITTER_OAUTH_TOKEN'], app.config['TWITTER_OAUTH_SECRET'])
+    twitter_api = tweepy.API(auth)
+    tweet= twitter_api.get_status(id, include_entities=True, include_card_uri=True, include_ext_alt_text=True)
+    if tweet:
+      sp=misc_util.get_spotify_for_user(user=TESTING_USER, logging=logging, client_id=app.config['APP_CONSUMER_KEY'], client_secret=app.config['APP_CONSUMER_SECRET'], redirect_uri=url_for('start', _external=True), scope=SCOPE)  
+      if not sp:
+        return("Error creating spotify")
+      track=misc_util.find_song(tweet, sp, logging, twitter_api)
+      if track:
+        return(str(track))
+      else:
+        return("Error: couldn't find song for tweet -- "+str(tweet.text))
+    else:
+      return("Error: couldn't find tweet")
+  else: 
+    return("invalid request")
+
 #this function is only for development. Returns JSON of Tweet
 @app.route('/tweet')
 def tweet_lookup():

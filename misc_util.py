@@ -248,6 +248,7 @@ def find_song(tweet, sp, logging, twitter_api, check_links=True, check_text=True
                 try:
                   track =  sp.track(urn)
                   found_url=True
+                  logging.info('Found: '+str(track['name'])+' from url '+url['expanded_url'])
                 except spotipy.exceptions.SpotifyException as err:
                   logging.warn('Could not find track from: URL '+url['expanded_url'])
               else:
@@ -276,7 +277,7 @@ def find_song(tweet, sp, logging, twitter_api, check_links=True, check_text=True
           #do a search
           track = search_spotify(sp, logging, terms)
           if track:
-            logging.debug('Found: '+str(track['name'])+' from text '+tweet.text)
+            logging.info('Found: '+str(track['name'])+' from text '+tweet.text)
           else:
             logging.warn('Did not find a song for: '+tweet.text)
   #don't get rickrolled

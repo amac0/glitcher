@@ -192,6 +192,8 @@ def search_spotify(sp, logging, terms):
     album_best=-1
     artist_best=-1
     most_popular=-1
+    song_words = len(re.split(' +',terms.strip()))
+    complete_song = False
     for track in result['tracks']['items']:
       song_score=similarity_score(track['name'],terms)
       album_score=similarity_score(track['album']['name'],terms)
@@ -200,25 +202,30 @@ def search_spotify(sp, logging, terms):
         artist_string = ' '.join([artist_string, artist['name']])
       artist_score=similarity_score(artist_string,terms)
       if song_score>song_best:
+        if song_score == song_words:
+          complete_song=True
         song_best=song_score
         artist_best=artist_score
         most_popular=track['popularity']
         result_track=track
-      elif song_score==song_best and album_score>album_best:
+      elif not complete_song and song_score==song_best and album_score>album_best:
         album_best=album_score
         artist_best=artist_score
         most_popular=track['popularity']
         result_track=track
-      elif song_score==song_best and album_score==album_best and artist_score>artist_best:
+      elif not complete_song and song_score==song_best and album_score==album_best and artist_score>artist_best:
         artist_best=artist_score
         most_popular=track['popularity']
         result_track=track
-      elif song_score==song_best and album_score==album_best and artist_score==artist_best and track['popularity']>most_popular:
+      elif not complete_song and song_score==song_best and album_score==album_best and artist_score==artist_best and track['popularity']>most_popular:
         #compare popularity
         most_popular=most_popular=track['popularity']
         result_track=track
-      logging.debug('Found Track: '+str(song_score)+'.'+str(album_score)+'.'+str(artist_score)+'.'+str(track['popularity'])+' '+track['name']+' - '+track['album']['name']+' - '+artist_string)
-    logging.debug('Chose Track:'+result_track['name'])
+      elif complete_song and song_score == song_best and track['popularity']>most_popular:
+        most_popular=most_popular=track['popularity']
+        result_track=track
+      logging.debug('Found Track: '+str(song_words)+' '+str(song_score)+'.'+str(album_score)+'.'+str(artist_score)+'.'+str(track['popularity'])+' '+track['name']+' - '+track['album']['name']+' - '+artist_string)
+    logging.debug('Chose Track:'+result_track['name']+' - '+result_track['album']['name'])
   else:
     logging.warn('Did not find a song for terms: '+terms)
   return(result_track)

@@ -118,7 +118,7 @@ def start():
           return ('Error! Failed to get access token.')
         auth2 = tweepy.OAuthHandler(app.config['TWITTER_APP_KEY'], app.config['TWITTER_APP_SECRET'])
         auth2.set_access_token(auth.access_token,auth.access_token_secret)
-        twitter_api = tweepy.API(auth)
+        twitter_api = tweepy.API(auth2)
         try:
           screen_name=twitter_api.verify_credentials().screen_name
         except tweepy.TweepError:
@@ -161,55 +161,6 @@ def start():
       return ('Error! Failed to get request token.')
     return 'You should not be here'
 
-#brings a user through the process of linking their spotify ID to a twitter username
-@app.route('/signup', methods=['GET', 'POST'])
-def signup():
-    #create a session if one doesn't exist
-    if not session.get('uuid'):
-        # Step 1. Visitor is unknown, give random ID
-        session['uuid'] = str(uuid.uuid4())
-        
-    #begin setting up the spotipy / spotify credentials -- this happens on hitting the web page for the first time, which todo I should change
-    cache_handler=misc_util.get_spotipy_cache_handler(username=session['uuid'])
-    auth_manager=misc_util.get_spotipy_auth_manager(cache_handler=cache_handler, client_id=app.config['APP_CONSUMER_KEY'], client_secret=app.config['APP_CONSUMER_SECRET'], redirect_uri=url_for('signup', _external=True), scope=SCOPE)
-
-    #if we are in the second step of the authorization flow then get an access token from spotify
-    if request.args.get("code"):
-        # Step 3. Being redirected from Spotify auth page
-        auth_manager.get_access_token(request.args.get("code"))
-        return redirect(url_for('signup', _external=True))
-
-    #if we are in the first step, check that we don't already have a token, if not then start the authorization process
-    if not auth_manager.validate_token(cache_handler.get_cached_token()):
-        # Step 2. Display sign in link when no token
-        auth_url = auth_manager.get_authorize_url()
-        return f'<h2><a href="{auth_url}">Authorize Spotify</a></h2>'
-
-    # Step 4. Signed in, get the twitter username
-    spotify = spotipy.Spotify(auth_manager=auth_manager)
-    
-    #get the twitter username
-    form = FinishForm()
-    if form.validate_on_submit():
-      #check that we don't already have that user (either spotify or twitter)
-      if not misc_util.is_valid_new_user(user_db, form.twitter_username.data, spotify.me()['email']):
-        return render_template('error.html', error_message='Sorry. We already have a record for Twitter username (' +form.twitter_username.data + ') or Spotify email ('+spotify.me()['email']+'). If you think this is in error, DM @attnfeedDJ.')
-      #copy the session_id to be the twitter_username session_id (the old one stays until the user signs out or we do garbage clean up)
-      shutil.copy(misc_util.session_cache_path(username=session['uuid']), misc_util.session_cache_path(username=form.twitter_username.data))
-      query = Query()
-      results= user_db.search(query.twitter_username == form.twitter_username.data)
-      if results:
-        user_db.update({'spotify_email':spotify.me()['email']}, query.twitter_username == form.twitter_username.data)
-      else:
-        user_db.insert({'twitter_username':form.twitter_username.data,'spotify_email':spotify.me()['email']})
-      logging.info('Added authorization for @'+form.twitter_username.data+' with spotify_email '+spotify.me()['email'])
-      return('Success go tweet mentioning @AttnFeedDJ')
-    else:
-      if not form.errors:
-        form=FinishForm(spotify_email=spotify.me()['email'])
-      return render_template('finish.html', form=form)
-    return 'You should not be here'
-
 #this just removes the session id stuff
 @app.route('/sign_out')
 def sign_out():
@@ -221,70 +172,8 @@ def sign_out():
         print ("Error: %s - %s." % (e.filename, e.strerror))
         logging.warn("Error signing out: %s - %s." % (e.filename, e.strerror))
     return redirect('/')
-
-#brings a user through the process of linking their spotify ID to a twitter username
-@app.route('/twitter_signup', methods=['GET', 'POST'])
-def twitter_signup():
-    #create a session if one doesn't exist
-    if not session.get('uuid'):
-        # Step 1. Visitor is unknown, give random ID
-        session['uuid'] = str(uuid.uuid4())
-        
-    #begin setting up the twitter credentials -- this happens on hitting the web page for the first time, which todo I should change
-    auth = tweepy.OAuthHandler(app.config['TWITTER_APP_KEY'], app.config['TWITTER_APP_SECRET'])
-    
-    #if we are in the second step of the authorization flow then get an access token from spotify
-    if request.args.get("oauth_verifier"):
-        # Step 3. Being redirected from Twitter auth page
-        auth.request_token = { 'oauth_token' : session['twitter_oauth'],
-                              'oauth_token_secret' : request.args.get("oauth_verifier") }
-        try:
-          auth.get_access_token(request.args.get("oauth_verifier"))
-        except tweepy.TweepError:
-          return ('Error! Failed to get access token.')
-        auth2 = tweepy.OAuthHandler(app.config['TWITTER_APP_KEY'], app.config['TWITTER_APP_SECRET'])
-        auth2.set_access_token(auth.access_token,auth.access_token_secret)
-        twitter_api = tweepy.API(auth)
-        try:
-          screen_name=twitter_api.verify_credentials().screen_name
-        except tweepy.TweepError:
-          return ('Error! Failed to verify auth.')
-        #make a playlist for the user's timeline
-        #get a spotify for the user (and it MUST exist)
-        sp=misc_util.get_spotify_for_user(user=screen_name, 
-                                          logging=logging, 
-                                          client_id=app.config['APP_CONSUMER_KEY'], 
-                                          client_secret=app.config['APP_CONSUMER_SECRET'], 
-                                          redirect_uri=url_for('signup', _external=True), scope=SCOPE)
-        playlist=misc_util.make_spotify_playlist_with_image(sp, sp.me()['id'],
-                                                            'AttnFeedDJ: Twitter Timeline Playlist', 
-                                                            misc_util.get_cover_image(COVERS_PATH), 
-                                                            logging)
-        #put the right stuff in the database
-        query = Query()
-        results= twitter_auth_db.search(query.twitter_username == screen_name)
-        if results:
-          twitter_auth_db.update({'access_token':auth.access_token, 'access_token_secret':auth.access_token_secret, 
-                                  'timeline_playlist_id':playlist['id']}, 
-                                 query.twitter_username == screen_name)
-        else:
-          twitter_auth_db.insert({'twitter_username':screen_name,
-                                  'access_token':auth.access_token, 'access_token_secret':auth.access_token_secret,
-                                  'timeline_playlist_id':playlist['id']})
-        logging.info('Added Twitter authorization for @'+screen_name)
-        return "Welcome " + screen_name
-    #if we are in the first step, check that we don't already have a token, if not then start the authorization process
-    # Step 2. Display sign in link when no token
-    try:
-      redirect_url = auth.get_authorization_url()
-      session['twitter_oauth']= auth.request_token['oauth_token']
-      return redirect(redirect_url)
-    except tweepy.TweepError:
-      return ('Error! Failed to get request token.')
-
-    return 'You should not be here'
-
   
+
 #todo secure this so it is just from 127.0.0.1
 #this checks for new @attnfeeddj mentions and generates playlists and entries in the playlist_searches_db if it finds any from users who are registered
 @app.route('/check')
@@ -314,7 +203,7 @@ def check():
         #todo respond on Twitter to the user
       else:
         #if we find a user, figure out what type of playlist to create for the user, create a playlist for the user, add the playlist to the playlist db, and reply to the user with a "good to go"
-        sp=misc_util.get_spotify_for_user(user=tweet.user.screen_name, logging=logging, client_id=app.config['APP_CONSUMER_KEY'], client_secret=app.config['APP_CONSUMER_SECRET'], redirect_uri=url_for('signup', _external=True), scope=SCOPE)
+        sp=misc_util.get_spotify_for_user(user=tweet.user.screen_name, logging=logging, client_id=app.config['APP_CONSUMER_KEY'], client_secret=app.config['APP_CONSUMER_SECRET'], redirect_uri=url_for('start', _external=True), scope=SCOPE)
         user_id = sp.me()['id']
         #figure out what type of playlist to create
         #todo don't insert if I already have that playlist
@@ -360,7 +249,7 @@ def process_searches():
       tweets_to_process = misc_util.check_hashtag(twitter_db, twitter_api, search['search_terms'], search['original_tweet_id'], logging)
       #grab an sp for the user if there are tweets to process
       if tweets_to_process:
-        sp=misc_util.get_spotify_for_user(user=search['twitter_username'], logging=logging, client_id=app.config['APP_CONSUMER_KEY'], client_secret=app.config['APP_CONSUMER_SECRET'], redirect_uri=url_for('signup', _external=True), scope=SCOPE)  
+        sp=misc_util.get_spotify_for_user(user=search['twitter_username'], logging=logging, client_id=app.config['APP_CONSUMER_KEY'], client_secret=app.config['APP_CONSUMER_SECRET'], redirect_uri=url_for('start', _external=True), scope=SCOPE)  
       for tweet in tweets_to_process:
         if sp:
           #don't try to find songs in explanations from the user
@@ -398,7 +287,7 @@ def process_timelines():
     twitter_api = tweepy.API(auth)
 
     #grab an sp for the user
-    sp=misc_util.get_spotify_for_user(user=user['twitter_username'], logging=logging, client_id=app.config['APP_CONSUMER_KEY'], client_secret=app.config['APP_CONSUMER_SECRET'], redirect_uri=url_for('signup', _external=True), scope=SCOPE)
+    sp=misc_util.get_spotify_for_user(user=user['twitter_username'], logging=logging, client_id=app.config['APP_CONSUMER_KEY'], client_secret=app.config['APP_CONSUMER_SECRET'], redirect_uri=url_for('start', _external=True), scope=SCOPE)
     tweets_to_process = misc_util.check_timeline(twitter_db, twitter_api, user['twitter_username'], logging)  
     for tweet in tweets_to_process:
       logging.info("Processing Tweet from Timeline: https://twitter.com/"+tweet.user.screen_name+'/status/'+str(tweet.id))

@@ -80,6 +80,7 @@ def get_playlist_searches(playlist_searches_db):
   results=playlist_searches_db.all()
   return(results)
 
+#get users for which we have a twitter authentication to make a set of users we can get timelines for
 def get_users_for_timelines(user_db):
   results=user_db.all()
   return(results)
@@ -101,8 +102,9 @@ def sanitize_title(title_text):
   #specially process YouTube titles which have the form Artist - Song - YouTube
   #can also be artist song - YouTube todo figure out which is which
   if re.search(r'YouTube', title_text):
-    (artist, song, yt) = title_text.split(' - ')
-    title_text=song+' '+artist
+    temp = title_text.split(' - ')
+    temp.pop()
+    title_text=' '.join(temp)
   result = re.sub(r'YouTube', ' ',   title_text)
   result = re.sub(r'on\sApple\sMusic', ' ',   result)
   result = re.sub(r' \&amp;', ' and ',   result)  
@@ -335,7 +337,7 @@ def check_timeline(twitter_db, twitter_api, twitter_username, logging):
     since_id=last_tweet_id(twitter_db,'signups')
   new_since_id=since_id
   logging.info("CHECK TIMELINE: "+twitter_username+' '+str(new_since_id))
-  for tweet in tweepy.Cursor(twitter_api.home_timeline,screen_name=twitter_username,since_id=since_id).items():
+  for tweet in tweepy.Cursor(twitter_api.home_timeline, since_id=since_id).items(20):
     logging.info("CHECK TIMELINE FOUND TWEETS"+'-'+str(tweet.id))
     new_since_id = max(tweet.id, new_since_id)
     update_last_tweet_id(twitter_db, 'timeline_'+twitter_username, new_since_id)

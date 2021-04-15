@@ -9,7 +9,7 @@ import random
 import base64
 from uuid import UUID
 SEARCH_KEYWORDS=['attnfeeddj', 'dj', 'playlist']
-
+MUSIC_HEAVY_URLS=['youtube.com', 'youtu.be', 'apple.com']
 #checks if a thing is a valid uuid (returns True if it is False if not)
 def is_valid_uuid(input):
   try:
@@ -252,16 +252,23 @@ def find_song(tweet, sp, logging, twitter_api, check_links=True, check_text=True
                   logging.warn('Could not find track from: URL '+url['expanded_url'])
               else:
                 #we don't have a spotify link, grab the title of the page and see whether that can be looked up
-                page = requests.get(url['expanded_url'])
-                if page and hasattr(page,'text'):
-                  title = re.search(r'(?<=<title>)(.+?)(?=</title>)', page.text, (re.DOTALL | re.IGNORECASE))
-                  if title and title.group(1):
-                    terms = str(sanitize_title(str(title.group(1))))
-                    track = search_spotify(sp, logging, terms)
-                    if track:
-                      logging.info('Found: '+str(track['name'])+' from url '+url['expanded_url']+' with terms'+terms)
-                      found_url=True
-                    else:
+                #check to see if the url is in our MUSIC_HEAVY_URLS
+                music_heavy=False
+                for term in MUSIC_HEAVY_URLS:
+                  found = url['expanded_url'].find(term)
+                  if found>-1:
+                    music_heavy=True
+                if music_heavy:
+                  page = requests.get(url['expanded_url'])
+                  if page and hasattr(page,'text'):
+                    title = re.search(r'(?<=<title>)(.+?)(?=</title>)', page.text, (re.DOTALL | re.IGNORECASE))
+                    if title and title.group(1):
+                      terms = str(sanitize_title(str(title.group(1))))
+                      track = search_spotify(sp, logging, terms)
+                      if track:
+                        logging.info('Found: '+str(track['name'])+' from url '+url['expanded_url']+' with terms'+terms)
+                        found_url=True
+                      else:
                         logging.warn('Did not find a song for URL: '+url['expanded_url'])
   #if I haven't found a url that was added, try searching on a sanitized version of the tweet text
   if check_text and not found_url:
